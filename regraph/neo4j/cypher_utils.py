@@ -329,24 +329,34 @@ def cloning_query(original_var, clone_var, clone_id, clone_id_var,
     else:
         query += (
             "// search for a node with the same id as the clone id\n" +
-            "OPTIONAL MATCH (same_id_node:node {{ id : '{}'}}) \n".format(
-                clone_id) +
-            "WITH same_id_node,  " +
-            "CASE WHEN same_id_node IS NOT NULL "
-            "THEN (coalesce(same_id_node.count, 0) + 1) " +
-            "ELSE 0 END AS same_id_node_new_count, " +
-            ", ".join(carry_vars) + "\n" +
-            "// generate new id if the same id node was found\n" +
-            "// and filter edges which will be removed \n" +
-            "WITH same_id_node, same_id_node_new_count, " +
-            "'{}' + CASE WHEN same_id_node_new_count <> 0 ".format(clone_id) +
-            "THEN toString(same_id_node_new_count) ELSE '' END as {}, ".format(
-                clone_id_var) +
-            ", ".join(carry_vars) + "\n" +
+            "OPTIONAL MATCH (same_id_node:node) \n" +
+            "WHERE same_id_node.id = '{}' \n".format(clone_id) +
+            "FOREACH(new_count \n\tIN CASE WHEN same_id_node IS NOT NULL\n"
+            "\tTHEN [coalesce(same_id_node.count, 0) + 1]\n"
+            "\tELSE [] END | \n"
+            "\t\tSET same_id_node.count = new_count) \n"
+            "WITH CASE WHEN same_id_node IS NULL THEN '' "
+            "ELSE '{}' + toString(same_id_node.count) END as {}, ".format(
+                clone_id, clone_id_var) +
+            ", ".join(carry_vars) + "\n"
+            # "OPTIONAL MATCH (same_id_node:node {{ id : '{}'}}) \n".format(
+            #     clone_id) +
+            # "WITH same_id_node,  " +
+            # "CASE WHEN same_id_node IS NOT NULL "
+            # "THEN (coalesce(same_id_node.count, 0) + 1) " +
+            # "ELSE 0 END AS same_id_node_new_count, " +
+            # ", ".join(carry_vars) + "\n" +
+            # "// generate new id if the same id node was found\n" +
+            # "// and filter edges which will be removed \n" +
+            # "WITH same_id_node, same_id_node_new_count, " +
+            # "'{}' + CASE WHEN same_id_node_new_count <> 0 ".format(clone_id) +
+            # "THEN toString(same_id_node_new_count) ELSE '' END as {}, ".format(
+            #     clone_id_var) +
+            # ", ".join(carry_vars) + "\n" +
             "// create a node corresponding to the clone\n" +
             "CREATE ({}:node) \n".format(
                 clone_var, clone_id_var) +
-            "WITH same_id_node, same_id_node_new_count, {}, {}, "
+            "WITH {}, {}, "
             "{}.id as original_old, ".format(
                 clone_var, clone_id_var, original_var) +
             ", ".join(carry_vars) + "\n" +
@@ -355,9 +365,8 @@ def cloning_query(original_var, clone_var, clone_id, clone_id_var,
             "// copy all the properties of the original node to the clone\n" +
             "SET {} = {}\n".format(clone_var, original_var) +
             "// set id property of the clone to the generated id\n" +
-            "SET {}.id = {}, {}.count = NULL, ".format(
+            "SET {}.id = {}, {}.count = NULL \n".format(
                 clone_var, clone_id_var, clone_var) +
-            "same_id_node.count = same_id_node_new_count + 1\n" +
             "// set back the id property of the original node\n" +
             "SET {}.id = original_old\n".format(original_var)
         )
